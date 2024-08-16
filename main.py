@@ -1,5 +1,6 @@
 import time
 import requests
+import json
 from instagrapi import Client
 
 # Initialize the client
@@ -14,8 +15,12 @@ post_url = "https://www.instagram.com/reel/C-sPGLCtush/"
 # Get the numeric media ID (primary key) from the post URL
 media_pk = client.media_pk_from_url(post_url)
 
-# Dictionary to store already processed comments
-processed_comments = {}
+# Load previously processed comments from a file
+try:
+    with open("processed_comments.json", "r") as f:
+        processed_comments = json.load(f)
+except FileNotFoundError:
+    processed_comments = {}
 
 # Message content
 message = (
@@ -46,23 +51,39 @@ while True:
     comments = client.media_comments(media_pk)
 
     for comment in comments:
-        comment_id = comment.pk
-        user_id = comment.user.pk  # Access the user's ID through the user attribute
-        username = comment.user.username  # Access the user's username
-        comment_text = comment.text.lower()  # Convert comment to lowercase for case-insensitive comparison
+        comment_id = str(comment.pk)  # Convert comment ID to string for JSON compatibility
+        user_id = comment.user.pk
+        username = comment.user.username
+        comment_text = comment.text.lower()
+
+        # Log the comment being processed for debugging
+        print(f"Processing comment ID: {comment_id} from user: @{username}")
 
         # Check if the comment contains the word "valorant" and hasn't been processed
-        if "valorant" in comment_text and comment_id not in processed_comments:
-            # Send DM to the user who commented
-            client.direct_send(message, [user_id])
+        if "valorant" in comment_text:
+            if comment_id not in processed_comments:
+                try:
+                    # Send DM to the user who commented
+                    client.direct_send(message, [user_id])
 
-            # Mark the comment as processed
-            processed_comments[comment_id] = True
+                    # Mark the comment as processed
+                    processed_comments[comment_id] = True
 
-            # Send the user ID and username to Discord
-            send_to_discord(user_id, username)
+                    # Save the updated processed comments to a file
+                    with open("processed_comments.json", "w") as f:
+                        json.dump(processed_comments, f)
 
-            print(f"DM sent to user {user_id} (@{username}) for comment {comment_id}")
+                    # Send the user ID and username to Discord
+                    send_to_discord(user_id, username)
+
+                    print(f"DM sent to user {user_id} (@{username}) for comment {comment_id}")
+
+                except Exception as e:
+                    print(f"Failed to send DM to user {user_id} (@{username}) for comment {comment_id}: {e}")
+            else:
+                print(f"Comment ID: {comment_id} has already been processed.")
+        else:
+            print(f"Comment ID: {comment_id} does not contain 'valorant', skipping.")
 
     # Sleep for a while before checking again
     time.sleep(30)  # Adjust the sleep time as needed
